@@ -14,14 +14,23 @@ WITH events AS (
         'nftrade' AS project,
         'v1' AS version,
         evt_block_time AS block_time,
-        tokenId AS token_id,
+        null AS token_id,
         'erc721' AS token_standard,
         'Single Item Trade' AS trade_type,
         1 AS number_of_items,
         'Buy' AS trade_category,
-        buyer AS buyer,
-        seller AS seller,
-        askPrice AS amount_raw,
+        CASE 
+            WHEN makerAssetAmount = 1 THEN  makerAddress
+            ELSE takerAddress
+        END AS seller,
+        CASE 
+            WHEN makerAssetAmount = 1 THEN  takerAddress
+            ELSE makerAddress
+        END AS buyer,        
+        CASE 
+            WHEN makerAssetAmount = 1 THEN  takerAssetAmount
+            ELSE makerAssetAmount
+        END AS amount_raw,
         '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c' currency_contract,
         'BNB' currency_symbol,
         collection AS nft_contract_address,
@@ -71,7 +80,7 @@ WITH events AS (
         CAST(0 AS DOUBLE) AS royalty_fee_percentage,
         0 AS royalty_fee_receive_address,
         0 AS royalty_fee_currency_symbol,
-        events.blockchain || events.project || events.version || events.tx_hash || events.seller  || events.buyer || events.nft_contract_address || events.token_id AS unique_trade_id
+        events.blockchain || events.project || events.version || events.tx_hash || events.seller  || events.buyer || events.nft_contract_address AS unique_trade_id
 
     FROM events
     JOIN {{ ref('nft_aggregators') }} agg ON events.buyer=agg.contract_address AND agg.blockchain='bnb'
@@ -88,6 +97,4 @@ WITH events AS (
         AND bt.block_time >= date_trunc("day", now() - interval '1 week')
         {% endif %}
 
--- 0xf47261b0000000000000000000000000 = 0x
--- 0x0000000000000000000000000000000000000000
--- 0xf47261b0000000000000000000000000
+0x94cfcdd700000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000440257179200000000000000000000000085f0e02cb992aa1f9f47112f815f519ef1a59e2d000000000000000000000000000000000000000000000000000000e8d4e21c7800000000000000000000000000000000000000000000000000000000
