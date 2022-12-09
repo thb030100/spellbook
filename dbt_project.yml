@@ -695,6 +695,9 @@ models:
       bnb:
         +schema: iziswap_bnb
         +materialized: view
+    nftrade:
+      +schema: nftrade
+      +materialized: view 
 
 seeds:
   spellbook:

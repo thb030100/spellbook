@@ -15,7 +15,10 @@ WITH events AS (
         'v1' AS version,
         evt_block_time AS block_time,
         null AS token_id,
-        'erc721' AS token_standard,
+        CASE   
+            WHEN substring(makerAssetData FROM 1 FOR 34) IN ('0xa7cb5fb7000000000000000000000000') OR substring(takerAssetData FROM 1 FOR 34) IN ('0xa7cb5fb7000000000000000000000000') THEN 'erc1155' 
+            ELSE 'erc721'
+        END AS token_standard,
         'Single Item Trade' AS trade_type,
         1 AS number_of_items,
         'Buy' AS trade_category,
@@ -33,13 +36,20 @@ WITH events AS (
         END AS amount_raw,
         '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c' currency_contract,
         'BNB' currency_symbol,
-        collection AS nft_contract_address,
+        CASE 
+            WHEN 
+                makerAssetAmount = 1 
+            THEN substring(replace(makerAssetData, substring(makerAssetData FROM 1 FOR 34), '0x') FROM 1 FOR 42) 
+            ELSE substring(replace(takerAssetData, substring(takerAssetData FROM 1 FOR 34), '0x') FROM 1 FOR 42)
+        END AS nft_contract_address,
         contract_address AS project_contract_address,
         evt_tx_hash AS tx_hash,
-        evt_block_number AS block_number
-    FROM {{source('pancakeswap_v2_bnb','ERC721NFTMarketV1_evt_Trade')}}
+        evt_block_number AS block_number,
+        evt_index
+    FROM {{source('nftrade_bnb','NiftyProtocol_evt_Fill')}}
+    WHERE substring(makerAssetData FROM 1 FOR 34) != '0x94cfcdd7000000000000000000000000' -- condition to remove transfer event
     {% if is_incremental() %}
-    WHERE evt_block_time >= date_trunc("day", now() - interval '1 week')
+    AND evt_block_time >= date_trunc("day", now() - interval '1 week')
     {% endif %}
 )
     SELECT 
@@ -49,7 +59,7 @@ WITH events AS (
         events.block_time,
         date_trunc('day', events.block_time) AS block_date,
         events.token_id,
-        bnb_nft_tokens.name collection,
+        bnb_nft_tokens.name AS collection,
         events.amount_raw/POWER(10, bnb_bep20_tokens.decimals)*prices.price AS amount_usd,
         events.token_standard,
         CASE WHEN agg.name IS NOT NULL THEN 'Bundle Trade' ELSE 'Single Item Trade' END AS trade_type,
@@ -70,20 +80,10 @@ WITH events AS (
         events.block_number,
         bt.from AS tx_from,
         bt.to AS tx_to,
-        CAST(0 AS DOUBLE) AS platform_fee_amount_raw,
-        0 AS platform_fee_amount,
-        0 AS platform_fee_amount_usd,
-        CAST(0 AS DOUBLE) AS platform_fee_percentage,
-        CAST(0 AS DOUBLE) AS royalty_fee_amount_raw,
-        0 AS royalty_fee_amount,
-        0 AS royalty_fee_amount_usd,
-        CAST(0 AS DOUBLE) AS royalty_fee_percentage,
-        0 AS royalty_fee_receive_address,
-        0 AS royalty_fee_currency_symbol,
-        events.blockchain || events.project || events.version || events.tx_hash || events.seller  || events.buyer || events.nft_contract_address AS unique_trade_id
+        events.block_number || events.tx_hash || events.evt_index AS unique_trade_id
 
     FROM events
-    JOIN {{ ref('nft_aggregators') }} agg ON events.buyer=agg.contract_address AND agg.blockchain='bnb'
+    LEFT JOIN {{ ref('nft_aggregators') }} agg ON events.buyer=agg.contract_address AND agg.blockchain='bnb'
     LEFT JOIN {{ ref('tokens_erc20') }} bnb_bep20_tokens ON bnb_bep20_tokens.contract_address=events.currency_contract AND bnb_bep20_tokens.blockchain='bnb'
     LEFT JOIN {{ ref('tokens_nft') }} bnb_nft_tokens ON bnb_nft_tokens.contract_address=events.currency_contract AND bnb_nft_tokens.blockchain='bnb'
     LEFT JOIN {{ source('prices', 'usd') }} prices ON prices.minute=date_trunc('minute', events.block_time)
@@ -91,10 +91,8 @@ WITH events AS (
         {% if is_incremental() %}
         AND prices.minute >= date_trunc("day", now() - interval '1 week')
         {% endif %}
-    LEFT JOIN {{ source('bnb','transactions') }} bt ON bt.hash=events.tx_hash
+    INNER JOIN {{ source('bnb','transactions') }} bt ON bt.hash=events.tx_hash
     AND bt.block_time=events.block_time
         {% if is_incremental() %}
         AND bt.block_time >= date_trunc("day", now() - interval '1 week')
         {% endif %}
-
-0x94cfcdd700000000000000000000000000000000000000000000000000000000000000400000000000000000000000000000000000000000000000000000000000000080000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000002000000000000000000000000000000000000000000000000000000000000000440257179200000000000000000000000085f0e02cb992aa1f9f47112f815f519ef1a59e2d000000000000000000000000000000000000000000000000000000e8d4e21c7800000000000000000000000000000000000000000000000000000000
