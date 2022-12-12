@@ -21,6 +21,7 @@ WITH decoded AS(
         royaltyFee,
         serviceFee,
         from_json(listing, 'tokenId INTEGER, value LONG, seller STRING, expireTimestamp INTEGER') AS listing
+    FROM {{source('nftkey_bnb','NFTKEYMarketplaceV2_evt_TokenBought')}}
 ), events AS (
     SELECT 
         'bnb' AS blockchain,
@@ -44,7 +45,7 @@ WITH decoded AS(
         evt_index,
         royaltyFee,
         serviceFee
-    FROM {{source('nftkey_bnb','NFTKEYMarketplaceV2_evt_TokenBought')}}
+    FROM decoded
     {% if is_incremental() %}
     WHERE evt_block_time >= date_trunc("day", now() - interval '1 week')
     {% endif %}
