@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: tofu_nft_bnb
+    description: >
+      BNB smart chain decoded tables related to pancake v2 contract
+    tables:
+      - name: MarketNG_call_runs
