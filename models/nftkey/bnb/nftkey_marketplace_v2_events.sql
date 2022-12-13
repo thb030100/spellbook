@@ -22,6 +22,7 @@ WITH decoded AS(
         serviceFee,
         from_json(listing, 'tokenId INTEGER, value LONG, seller STRING, expireTimestamp INTEGER') AS listing
     FROM {{source('nftkey_bnb','NFTKEYMarketplaceV2_evt_TokenBought')}}
+    WHERE contract_address = '0x55e53b5e38decb925a26ca5f38bdde68f373bba8'
 ), events AS (
     SELECT 
         'bnb' AS blockchain,
