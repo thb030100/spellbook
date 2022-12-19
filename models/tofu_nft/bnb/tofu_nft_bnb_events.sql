@@ -1,3 +1,13 @@
+{{ config(
+    alias = 'events',
+    partition_by = ['block_date'],
+    materialized = 'incremental',
+    file_format = 'delta',
+    incremental_strategy = 'merge',
+    unique_key = ['block_time', 'unique_trade_id']
+    )
+}}
+
 WITH decoded AS(
     SELECT
             run.call_tx_hash AS tx_hash,
@@ -5,33 +15,39 @@ WITH decoded AS(
             run.call_block_number AS block_number,
             run.contract_address AS project_contract_address,
             event.evt_index,
-            JSON_QUERY(run.detail, 'strict $.currency') AS currency_contract,
-            JSON_QUERY(run.detail, 'strict $.price') AS amount_raw,
-            JSON_QUERY(run.detail, 'strict $.incentiveRate') AS incentiveRate,
-            JSON_QUERY(event.inventory, 'strict $.buyer') AS buyer,     
-            JSON_QUERY(event.inventory, 'strict $.seller') AS seller,   
-            replace(replace(replace(replace(replace(JSON_QUERY(run.detail, 'strict $.bundle'), '\',''),'[',''), ']',''),'"{','{'),'}"','}') bundle
-            
-    FROM tofu_nft_bnb.MarketNG_call_run run
-    LEFT JOIN tofu_nft_bnb.MarketNG_evt_EvInventoryUpdate event ON event.evt_tx_hash = run.call_tx_hash
-    WHERE date_trunc('day',call_block_time) >= timestamp '2022-01-01'
+            JSON_VALUE(event.inventory, 'lax $.currency') currency_contract,
+            JSON_VALUE(run.detail, 'lax $.price') amount_raw,
+            JSON_VALUE(run.detail, 'lax $.incentiveRate') incentiveRate,
+            JSON_VALUE(event.inventory, 'lax $.buyer') buyer,
+            JSON_VALUE(event.inventory, 'lax $.seller') seller,
+            JSON_VALUE(run.detail, 'lax $.bundle[*]') bundle
+    FROM {{source('tofu_nft_bnb', 'MarketNG_call_run')}} run
+    LEFT JOIN {{source('tofu_nft_bnb', 'MarketNG_evt_EvInventoryUpdate')}} event ON event.evt_tx_hash = run.call_tx_hash
+    AND run.call_tx_hash IS NOT NULL
+    AND JSON_VALUE(event.inventory, 'lax $.seller') NOT LIKE '%0x000000000000000000000000%'
+    {% if is_incremental() %}
+    WHERE call_block_time >= date_trunc("day", now() - interval '1 week')
+    {% endif %}    
 ), events AS (
     SELECT 
         'bnb' AS blockchain,
-        'pancakeswap' AS project,
+        'tofu' AS project,
         'v1' AS version,
         block_time,
-        JSON_QUERY(bundle, 'strict $.tokenId') AS token_id,
+        JSON_VALUE(bundle, 'lax $.tokenId') AS token_id,
         'erc721' AS token_standard,
         'Single Item Trade' AS trade_type,
-        JSON_QUERY(bundle, 'strict $.amount') AS number_of_items, 
+        CAST(JSON_VALUE(bundle, 'lax $.amount') AS INTEGER) AS number_of_items, 
         'Buy' AS trade_category,
         buyer,
         seller,
         CAST(amount_raw AS double) amount_raw,
-        currency_contract,
+        CASE 
+            WHEN currency_contract = '0x0000000000000000000000000000000000000000' THEN '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c'
+            ELSE currency_contract
+        END currency_contract,
         'BNB' AS currency_symbol,
-        JSON_QUERY(bundle, 'strict $.token') AS nft_contract_address,
+        JSON_VALUE(bundle, 'strict $.token') AS nft_contract_address,
         project_contract_address,
         tx_hash,
         block_number,

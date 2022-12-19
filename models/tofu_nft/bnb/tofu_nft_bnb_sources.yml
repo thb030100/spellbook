@@ -5,4 +5,5 @@ sources:
     description: >
       BNB smart chain decoded tables related to pancake v2 contract
     tables:
-      - name: MarketNG_call_runs
+      - name: MarketNG_call_run
+      - name: MarketNG_evt_EvInventoryUpdate
